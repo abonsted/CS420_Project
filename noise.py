@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 m = 10 #These will be the "m" fundamental memories imprinted
 num_neurons = 50
 
+
 def sign(x):
     if(x >= 0):
         return 1
@@ -56,36 +57,38 @@ def calculate_energy(probe, weights):
     energy *= -0.5
     return energy
 
-#MAIN
-#Loop through increasing number of patterns (1->20)
-recall_count = np.zeros(m+1)
-for i in range(1, m):
-    #Make patterns (randomize or images)
-    patterns = np.random.choice([-1, 1], (i, num_neurons))
 
-    #Imprint those patterns and create weight matrix
-    weights = imprintPatterns(patterns)
+def hop_net(noise_lvl):
+    #Loop through increasing number of patterns (1->20)
+    recall_count = np.zeros(m+1)
+    for i in range(1, m):
+        #Make patterns (randomize or images)
+        patterns = np.random.choice([-1, 1], (i, num_neurons))
 
-    #Recall process, async vs sync or pick one
-    for num, p in enumerate(patterns): # testing j number of probes with given weight matrix
-        noisy = p.copy() #Noisy probe
-        noisy_ind = np.random.choice(num_neurons, (int)(num_neurons * 0.3), replace=False)
-        for ind in noisy_ind:
-            noisy[ind] *= -1
+        #Imprint 'i' patterns and create weight matrix
+        weights = imprintPatterns(patterns)
 
-        probe = noisy
-        new_probe, min_e, iter = async_recall(probe, weights, patterns)
+        #Asynchronous recall process
+        for num, p in enumerate(patterns): # testing j number of probes with given weight matrix
+            #Create noisy probe from pattern p (alr imprinted)
+            noisy = p.copy()
+            noisy_ind = np.random.choice(num_neurons, (int)(num_neurons * noise_lvl), replace=False)
+            for ind in noisy_ind:
+                noisy[ind] *= -1
+            probe = noisy
+            new_probe, min_e, iter = async_recall(probe, weights, patterns)
 
-        if(iter < 1000):
-            recall_count[i] += 1
-    recall_count[i] /= i
+            if(iter < 1000):
+                recall_count[i] += 1
+        recall_count[i] /= i
 
-print(recall_count[1:-1])
+    print(noise_lvl)
+    print(recall_count[1:-1])
 
-"""
-Things to look into
- - async vs sync recalling - thurs
- - Images rather than random
- - Noise?
- - Imprinted patterns
-"""
+#MAIN here
+# noise_lvls = np.arange(0.1, 0.7, 0.1)
+# print(noise_lvls)
+# for i in noise_lvls:
+#     hop_net(i)
+
+hop_net(0.2)
