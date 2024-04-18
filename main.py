@@ -1,91 +1,123 @@
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import hop
 
-#Global vals
-m = 10 #These will be the "m" fundamental memories imprinted
-num_neurons = 50
+N = 32**2
 
-def sign(x):
-    if(x >= 0):
-        return 1
-    else:
-        return -1
-    
-def imprintPatterns(patterns):
-    W = np.zeros((num_neurons, num_neurons))
-    for p in patterns:
-        i_vec = np.array([p]).transpose()
-        j_vec = np.array([p])
+def imprint_images(images):
+    weights = np.zeros((N, N))
 
-        weight_matrix = np.dot(i_vec, j_vec)
+    for image in images:
+        image = image[:, np.newaxis]
+        weights += np.dot(image, image.T)
 
-        weight_matrix = weight_matrix - np.identity(num_neurons)
+    weights *= 0.01
+    np.fill_diagonal(weights, 0)
 
-        W += weight_matrix
-    return W
+    return weights
 
-def async_recall(probe, weights, patterns):
-    min_energy = 1000
-    min_probe = []
-    iter = 0
-    while iter < 1000:
-        neuron_index = np.random.randint(0, len(probe))
-        probe[neuron_index] = sign(np.dot(weights[neuron_index], probe))
+def async_recall(probe_, weights, max_iterations):
+    probe = probe_.copy()
+    energy_before = calculate_energy(probe, weights)
 
-        #Check energy threshold
-        energy = calculate_energy(probe, weights)
-        if(energy < min_energy):
-            min_energy = energy
-            min_probe = probe
+    for it in range(max_iterations):
+        order = np.array(range(N))
+        np.random.shuffle(order)
 
-            for p in patterns:
-                equal = np.array_equal(probe, p)
-                if equal:
-                    return min_probe, min_energy, iter
-        iter += 1
+        for i in order:
+            h = 0
+            for j in range(weights.shape[0]):
+                h += weights[i,j] * probe[j]
 
-    return min_probe, min_energy, iter
-    
+            probe[i] = -1 if h < 0 else 1
+
+        energy_after = calculate_energy(probe, weights)
+
+        if energy_after == energy_before:
+            return probe, it
+        
+        energy_before = energy_after
+
+    return probe, max_iterations
+
+def sync_recall(probe, weights, max_iterations):
+    energy_before = calculate_energy(probe, weights)
+
+    for it in range(max_iterations):
+        probe = np.dot(weights, probe)
+        probe = np.where(probe >= 0, 1, -1)
+
+        energy_after = calculate_energy(probe, weights)
+
+        if energy_after == energy_before:
+            return probe, it
+
+        energy_before = energy_after
+
+    return probe, max_iterations
+
 def calculate_energy(probe, weights):
-    energy = 0.0
-    for i in range(num_neurons):
-        for j in range(num_neurons):
-            if(i != j):
-                energy += weights[i,j]*probe[i]*probe[j]
-    energy *= -0.5
-    return energy
+    return -0.5 * np.sum(weights * np.outer(probe, probe))
 
-#MAIN
-#Loop through increasing number of patterns (1->20)
-recall_count = np.zeros(m+1)
-for i in range(1, m):
-    #Make patterns (randomize or images)
-    patterns = np.random.choice([-1, 1], (i, num_neurons))
+def noisy_probes(images, x):
+    probes = []
+    for image in images:
+        probe = image.copy()
+        flip = np.arange(len(probe)) % x == 0
+        probe[flip] *= -1
+        probes.append(probe)
 
-    #Imprint those patterns and create weight matrix
-    weights = imprintPatterns(patterns)
+    return np.array(probes)
 
-    #Recall process, async vs sync or pick one
-    for num, p in enumerate(patterns): # testing j number of probes with given weight matrix
-        noisy = p.copy() #Noisy probe
-        noisy_ind = np.random.choice(num_neurons, (int)(num_neurons * 0.3), replace=False)
-        for ind in noisy_ind:
-            noisy[ind] *= -1
+def resemblance(image, probe):
+    return (np.sum(image == probe) / image.shape[0]) * 100
 
-        probe = noisy
-        new_probe, min_e, iter = async_recall(probe, weights, patterns)
+def hamming_distance(original, recalled):
+    return np.sum(original != recalled)
 
-        if(iter < 1000):
-            recall_count[i] += 1
-    recall_count[i] /= i
+def test_images(num_images, recall='sync', save=False):
+    images = hop.load_hopfield('images/test')
+    images = images[:num_images]
 
-print(recall_count[1:-1])
+    weights = imprint_images(images)
+    probes = noisy_probes(images, 4)
 
-"""
-Things to look into
- - async vs sync recalling - thurs
- - Images rather than random
- - Noise?
- - Imprinted patterns
-"""
+    if save:
+        for i in range(len(images)):
+            orig = hop.hopfield_to_image(images[i])
+            orig.save(f'images/orig/orig_{i}.jpg')
+
+            noise = hop.hopfield_to_image(probes[i])
+            noise.save(f'images/noise/noise_{i}.jpg')
+
+
+    for i in range(len(images)):
+        if recall == 'sync':
+            new_probe, it = sync_recall(probes[i], weights, 1000)
+        elif recall == 'async':
+            new_probe, it = async_recall(probes[i], weights, 1000)
+
+        if save:
+            new = hop.hopfield_to_image(new_probe)
+            new.save(f'images/new/new_{i}.jpg')
+
+        noise_res = resemblance(images[i], probes[i])
+        new_res = resemblance(images[i], new_probe)
+
+        print(f'Image {i} ({it} iterations)')
+        print(f'  Noise: {noise_res:.2f}%')
+        print(f'  New:   {new_res:.2f}%')
+        print()
+
+def test_all():
+    for num_images in range(1, 9):
+        print(f'Testing {num_images} images')
+        print()
+        test_images(num_images)
+        print()
+        print()
+
+
+if __name__ == '__main__':
+    # test_all()
+
+    test_images(8)
