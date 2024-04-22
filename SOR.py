@@ -88,23 +88,14 @@ def imprintPatterns(patterns):
 
 # Reconstruct image with async recall and return info about the closest pattern
 # retrieved 
-def async_recall(probe, weights, original_pattern):
+def async_recall(probe, weights, original_pattern, num_neurons_updated):
     
     iter  = 0
     energy_after = 0
     energy_prior = calculate_energy(probe, weights)
     for time_step in range(iter_threshold):
-        order = np.array(range(num_neurons))
+        order = np.array(range(int(num_neurons_updated * num_neurons)))
         np.random.shuffle(order)
-        
-        #print(order)
-        # for o in order:
-        #     h = 0
-        #     for neighbor in weights[o]:
-        #         h += neighbor * probe[o]
-        #     probe[o] = sign(h)
-        # order = np.random.choice(num_neurons, 200, replace=False)
-        # np.random.shuffle(order)
         
         for i in order:
             h = 0
@@ -150,16 +141,25 @@ def async_recall(probe, weights, original_pattern):
     #     #print(f'iter number: {iter} and energy: {energy}')
     #     iter += 1
 
+def sync_recall(probe, weights, max_iterations):
+    energy_before = calculate_energy(probe, weights)
+
+    for it in range(max_iterations):
+        probe = np.dot(weights, probe)
+        probe = np.where(probe >= 0, 1, -1)
+
+        energy_after = calculate_energy(probe, weights)
+
+        if energy_after == energy_before:
+            return probe, it
+
+        energy_before = energy_after
+
+    return probe, max_iterations
   
 # Code from Dr. Schuman's notes on Hopfield networks  
 def calculate_energy(probe, weights):
-    energy = 0.0
-    for i in range(num_neurons):
-        for j in range(num_neurons):
-            if(i != j):
-                energy += weights[i,j]*probe[i]*probe[j]
-    energy *= -0.5
-    return energy
+    return -0.5 * np.sum(weights * np.outer(probe, probe))
 
 # Returns a 2D array of size (num_patterns, num_neurons) of random
 # MNIST images (that are trimmed from 28x28 to 22x22 by internal helper
@@ -301,6 +301,178 @@ def img_main():
         
     print("Recall count: ", recall_count)
 
+def experiment_main(patterns, noise_lvl, num_neurons_updated, ex_num, iteration):
+
+    columns = ['experiment', 'iter', 'noise_lvl', 'num_neurons_updated', 'patterns_imprinted(m)', 'avg_recall_ratio', 'avg_hamming', 'avg_resemblance' ,'avg_steps']
+    df = pd.DataFrame(columns=columns)
+
+    recall_count = np.zeros(m+1)
+    recall_steps = []
+    tracking_arr = []  # keep track of the corresponding number for the i'th pattern
+    for i in range(1, m+1):
+               
+        #Make patterns (randomize or images)
+        #patterns = np.random.choice([-1, 1], (i, num_neurons))
+
+        # Generate i random mnist_images
+        # THIS ASSUMES THE mnist_png_testing.tar.gz FILE WAS UNTARRED IN CURRENT DIRECTORY
+        # This also generates i entirely new patterns. something like the following should probably be used
+        # patterns.append(rand_mnist_patterns)
+        #patterns = rand_mnist_matrix(i)
+        #Imprint those patterns and create weight matrix
+        # if(i == 3):
+        #     print(patterns[:i-1])
+        #     exit()
+
+        weights = imprintPatterns(patterns[:i])
+        
+        # Initial recall_steps for the current iterations
+        # recall_steps[i] will append i values to it, representing the iterations it 
+        # took to recall the recall_steps[i][j]'th pattern
+        recall_steps.append([])
+
+        avg_recall_iters = 0
+        avg_ham_dist = 0
+        avg_resemblance = 0
+        
+        #Recall process, async vs sync or pick one
+        for num, p in enumerate(patterns[:i]): # testing j number of probes with given weight matrix
+            
+            # Show the original image before adding noise
+            # plt.imshow(squarify(p), cmap="binary")
+            # plt.show()
+            
+            # Create the noisy vector to use as the initial probe
+            noisy = p.copy()
+            noise_amount = noise_lvl
+            # Pseudorandomly select (num_neurons * noise_amount) unique indices from the original image
+            # to flip to the other state
+            noisy_ind = np.array(np.random.choice(num_neurons, (int)(num_neurons*noise_amount), replace=False))
+            noisy[noisy_ind] *= -1
+            
+            # Show the noisy image
+            # plt.imshow(squarify(noisy), cmap="binary")
+            # plt.show()
+            
+            # Perform the recall with the established noisy vector and the imprinted weights matrix
+            # the 'p' parameter currently isn't used, but it's here for coherenecy with other versions
+            # of the async_recall function betwen us
+            new_probe, min_e, iter = async_recall(noisy, weights, p, num_neurons_updated)
+            ham_dist = hamming_distance(p, new_probe)
+            resemb = resemblance(p, new_probe)
+            
+            # print(f'Imprinting {i} patterns allowed probe {num} to converge in {iter} iterations {"(reached iteration threshold)" if iter == iter_threshold else ""}')
+            # print(f'The resemblance was: {resemb}')
+            # print(f'The Hamming distance between the original and the resulting image are: {ham_dist}')
+            
+            # Show the recalled image
+            # plt.imshow(squarify(np.array(new_probe)), cmap="binary")
+            # plt.show()
+            
+            # Only count a image to be recalled if it converged in less than the iteration threshold
+            # and the resemble is close enough to the tolerance established
+            if(iter < iter_threshold and resemb >= tolerance):
+                recall_count[i] += 1
+                
+            avg_recall_iters += iter
+            avg_ham_dist += ham_dist
+            avg_resemblance += resemb
+        # Avergage the number recalled successfully with tolerance and the steps required amongst the patterns 
+        # for that recall to occur       
+        # recall_count[i] /= i
+        # recall_steps[i - 1].append(iter)
+        avg_recall_ratio = recall_count[i] / i
+        avg_recall_iters /= i
+        avg_ham_dist /= i
+        avg_resemblance /= i
+
+        # print(f'{avg_recall_ratio}, {avg_recall_iters}, {avg_ham_dist}, {avg_resemblance}')
+    
+        new_row = [ex_num, iteration, noise_lvl, num_neurons_updated, i, avg_recall_ratio, avg_ham_dist, avg_resemblance, avg_recall_iters] 
+        df = pd.concat([df, pd.Series(new_row, index = df.columns).to_frame().T], axis=0, ignore_index=True)
+        
+    # print("Recall count: ", recall_count)
+    return df
+
+def sync_experiment_main(patterns, noise_lvl, num_neurons_updated, ex_num, iteration):
+
+    columns = ['experiment', 'iter', 'noise_lvl', 'num_neurons_updated', 'patterns_imprinted(m)', 'avg_recall_ratio', 'avg_hamming', 'avg_resemblance' ,'avg_steps']
+    df = pd.DataFrame(columns=columns)
+
+    recall_count = np.zeros(m+1)
+    recall_steps = []
+    tracking_arr = []  # keep track of the corresponding number for the i'th pattern
+    for i in range(1, m+1):
+        weights = imprintPatterns(patterns[:i])
+        
+        # Initial recall_steps for the current iterations
+        # recall_steps[i] will append i values to it, representing the iterations it 
+        # took to recall the recall_steps[i][j]'th pattern
+        recall_steps.append([])
+
+        avg_recall_iters = 0
+        avg_ham_dist = 0
+        avg_resemblance = 0
+        
+        #Recall process, async vs sync or pick one
+        for num, p in enumerate(patterns[:i]): # testing j number of probes with given weight matrix
+            
+            # Show the original image before adding noise
+            # plt.imshow(squarify(p), cmap="binary")
+            # plt.show()
+            
+            # Create the noisy vector to use as the initial probe
+            noisy = p.copy()
+            noise_amount = noise_lvl
+            # Pseudorandomly select (num_neurons * noise_amount) unique indices from the original image
+            # to flip to the other state
+            noisy_ind = np.array(np.random.choice(num_neurons, (int)(num_neurons*noise_amount), replace=False))
+            noisy[noisy_ind] *= -1
+            
+            # Show the noisy image
+            # plt.imshow(squarify(noisy), cmap="binary")
+            # plt.show()
+            
+            # Perform the recall with the established noisy vector and the imprinted weights matrix
+            # the 'p' parameter currently isn't used, but it's here for coherenecy with other versions
+            # of the async_recall function betwen us
+            new_probe, iter = sync_recall(noisy, weights, iter_threshold)
+            ham_dist = hamming_distance(p, new_probe)
+            resemb = resemblance(p, new_probe)
+            
+            # print(f'Imprinting {i} patterns allowed probe {num} to converge in {iter} iterations {"(reached iteration threshold)" if iter == iter_threshold else ""}')
+            # print(f'The resemblance was: {resemb}')
+            # print(f'The Hamming distance between the original and the resulting image are: {ham_dist}')
+            
+            # Show the recalled image
+            # plt.imshow(squarify(np.array(new_probe)), cmap="binary")
+            # plt.show()
+            
+            # Only count a image to be recalled if it converged in less than the iteration threshold
+            # and the resemble is close enough to the tolerance established
+            if(iter < iter_threshold and resemb >= tolerance):
+                recall_count[i] += 1
+                
+            avg_recall_iters += iter
+            avg_ham_dist += ham_dist
+            avg_resemblance += resemb
+        # Avergage the number recalled successfully with tolerance and the steps required amongst the patterns 
+        # for that recall to occur       
+        # recall_count[i] /= i
+        # recall_steps[i - 1].append(iter)
+        avg_recall_ratio = recall_count[i] / i
+        avg_recall_iters /= i
+        avg_ham_dist /= i
+        avg_resemblance /= i
+
+        # print(f'{avg_recall_ratio}, {avg_recall_iters}, {avg_ham_dist}, {avg_resemblance}')
+        # print(i)
+    
+        new_row = [ex_num, iteration, noise_lvl, num_neurons_updated, i, avg_recall_ratio, avg_ham_dist, avg_resemblance, avg_recall_iters] 
+        df = pd.concat([df, pd.Series(new_row, index = df.columns).to_frame().T], axis=0, ignore_index=True)
+        
+    # print("Recall count: ", recall_count)
+    return df
 
 if __name__ == '__main__':
     # May want to repeat the results of image main multiple times and average results
