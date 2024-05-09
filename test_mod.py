@@ -1,0 +1,2 @@
+def blart():
+    print("blart")

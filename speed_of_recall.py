@@ -26,6 +26,7 @@ iter_threshold = 50     # upper bound of time step iterations to perform
 tolerance = 95.0        # % amount of the image is recalled correctly
 
 
+
 # convert png image from PIL to usable format
 def png_to_hop_img(infile_path):
     # img = Image.open(png_path)
@@ -86,6 +87,8 @@ def imprintPatterns(patterns):
         W += weight_matrix
     return W
 
+def PRINT_TEST():
+    print('blart')
 # Reconstruct image with async recall and return info about the closest pattern
 # retrieved 
 def async_recall(probe, weights, original_pattern):
@@ -93,10 +96,12 @@ def async_recall(probe, weights, original_pattern):
     iter  = 0
     energy_after = 0
     energy_prior = calculate_energy(probe, weights)
+    print("is this working")
     for time_step in range(iter_threshold):
-        order = np.array(range(num_neurons))
+        order = np.random.choice(num_neurons, int((num_neurons*0.9)))
         np.random.shuffle(order)
         
+
         #print(order)
         # for o in order:
         #     h = 0
@@ -112,10 +117,19 @@ def async_recall(probe, weights, original_pattern):
             for j in range(weights.shape[0]):
                 h += weights[i,j]*probe[j]
             probe[i] = sign(h)
-            
+        
+        # Plot changed probe
+        fig, ax = plt.subplots()
+        ax.imshow(squarify(probe), cmap="binary")
+        ax.axis('off')
+        ax.set_title(f'After Time Step {iter + 1}')
+        plt.show()
+        
+        
         # calculate energy here
         energy_after = calculate_energy(probe, weights)
-        
+        print(energy_prior)
+        print(energy_after)
         #print(f'energy before: {energy_prior}  energy after: {energy_after}')
         if energy_prior == energy_after:
             return probe, energy_after, time_step + 1
@@ -152,14 +166,18 @@ def async_recall(probe, weights, original_pattern):
 
   
 # Code from Dr. Schuman's notes on Hopfield networks  
+# def calculate_energy(probe, weights):
+#     energy = 0.0
+#     for i in range(num_neurons):
+#         for j in range(num_neurons):
+#             if(i != j):
+#                 energy += weights[i,j]*probe[i]*probe[j]
+#     energy *= -0.5
+#     return energy
+
 def calculate_energy(probe, weights):
-    energy = 0.0
-    for i in range(num_neurons):
-        for j in range(num_neurons):
-            if(i != j):
-                energy += weights[i,j]*probe[i]*probe[j]
-    energy *= -0.5
-    return energy
+    return -0.5 * np.sum(weights * np.outer(probe, probe))
+
 
 # Returns a 2D array of size (num_patterns, num_neurons) of random
 # MNIST images (that are trimmed from 28x28 to 22x22 by internal helper
@@ -167,7 +185,7 @@ def calculate_energy(probe, weights):
 def rand_mnist_matrix(num_patterns):
     # Loop through dirs of mnist_png/testing/NUM_NAME
     # and get one random file to imprint.
-    # Return the matrix of num_patterns x (28x28) to user
+    # Return the matrix of num_patteirns x (28x28) to user
     patterns_matrix = []
     chosen_str = ""
     basedir = "./mnist_png/testing/"
@@ -226,6 +244,7 @@ def resemblance(image, probe):
 # Original and recalled are assumed to be 1D np arrays
 def hamming_distance(original, recalled):
     return np.sum(original != recalled)
+
 #MAIN
 # Loop through increasing number of patterns (1->20)
 def img_main():
@@ -255,6 +274,11 @@ def img_main():
         # took to recall the recall_steps[i][j]'th pattern
         recall_steps.append([])
         
+        # Average iterations across m recalled patterns
+        avg_recall_iters = 0
+        avg_ham_dist = 0
+        avg_resemblance = 0 
+        
         #Recall process, async vs sync or pick one
         for num, p in enumerate(patterns): # testing j number of probes with given weight matrix
             
@@ -264,7 +288,7 @@ def img_main():
             
             # Create the noisy vector to use as the initial probe
             noisy = p.copy()
-            noise_amount = 0.1
+            noise_amount = 0.0
             # Pseudorandomly select (num_neurons * noise_amount) unique indices from the original image
             # to flip to the other state
             noisy_ind = np.array(np.random.choice(num_neurons, (int)(num_neurons*noise_amount), replace=False))
@@ -294,10 +318,19 @@ def img_main():
             if(iter < iter_threshold and resemb >= tolerance):
                 recall_count[i] += 1
                 
+            avg_recall_iters += iter
+            avg_ham_dist += ham_dist
+            avg_resemblance += resemb
+            
         # Avergage the number recalled successfully with tolerance and the steps required amongst the patterns 
         # for that recall to occur       
-        recall_count[i] /= i
-        recall_steps[i - 1].append(iter)
+        avg_recall_ratio = recall_count[i] / i
+        avg_recall_iters /= i
+        avg_ham_dist  /= i
+        avg_resemblance /= i
+        
+        print(f'avg_recall_ration, avg_recall_iters, avg_ham_dist, avg_resemblance')
+        print(f'{avg_recall_ratio},{avg_recall_iters},{avg_ham_dist},{avg_resemblance}')
         
     print("Recall count: ", recall_count)
 
