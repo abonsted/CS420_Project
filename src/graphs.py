@@ -25,10 +25,13 @@ def noise_graphing(df, amount):
 
     ax1.legend(handles=[leg1, leg2])
 
-    plt.savefig(os.path.join('andrew-graphs', amount + "NoiseLevel_Recallability.png"))
+    plt.savefig(os.path.join('andrew-graphs-new', amount + "NoiseLevel_Recallability.png"))
 
-async_df = pd.read_csv("async_data.csv")
+async_df1 = pd.read_csv("new_async_data1.csv")
+async_df2 = pd.read_csv("new_async_data2.csv")
+async_df = pd.concat([async_df1, async_df2])
 async_df["num_neurons_updated"] = async_df["num_neurons_updated"].apply(round_vals)
+
 
 # GRAPHS FOR A RANGE OF num_neurons_updated
     #Low = 0.1-0.3
@@ -48,9 +51,7 @@ async_df["num_neurons_updated"] = async_df["num_neurons_updated"].apply(round_va
 # noise_graphing(noise_lvls3, "High")
 
 
-
 #GRAPHS FOR EACH num_neurons_updated VALUES
-
 # for i in np.arange(0.1, 1.1, 0.1):
 #     i = round(i, 2)
 #     print(i)
@@ -74,4 +75,14 @@ async_df["num_neurons_updated"] = async_df["num_neurons_updated"].apply(round_va
 
 #     ax1.legend(handles=[leg1, leg2])
 
-#     plt.savefig(os.path.join('andrew-graphs', str(i) + "NoiseLevel_Recallability.png"))
+#     plt.savefig(os.path.join('andrew-graphs-new', str(i) + "NoiseLevel_Recallability.png"))
+
+#Effect of changing number of neurons updated -> make into table
+sub = async_df.groupby("num_neurons_updated").mean()
+print(sub)
+
+plt.plot(sub["avg_resemblance"])
+plt.plot(sub["avg_steps"])
+plt.plot(sub["avg_hamming"])
+plt.plot(sub["avg_recall_ratio"])
+plt.show()

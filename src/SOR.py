@@ -94,16 +94,15 @@ def async_recall(probe, weights, original_pattern, num_neurons_updated):
     energy_after = 0
     energy_prior = calculate_energy(probe, weights)
     for time_step in range(iter_threshold):
-        order = np.array(range(int(num_neurons_updated * num_neurons)))
+        order = np.array(range(num_neurons))
         np.random.shuffle(order)
         
-        for i in order:
+        for i in order[:int(num_neurons_updated * num_neurons)]:
             h = 0
             
             for j in range(weights.shape[0]):
                 h += weights[i,j]*probe[j]
             probe[i] = sign(h)
-            
         # calculate energy here
         energy_after = calculate_energy(probe, weights)
         

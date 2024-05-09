@@ -10,16 +10,16 @@ sync_df = pd.DataFrame(columns=columns)
 
 #Hyper-parameters
 #Number of patterns is technically a hyper parameter but that is done in the main code
-noise = np.arange(0.0, 0.6, 0.1) #6
+noise = np.arange(0.3, 0.6, 0.1) #6
 num_neurons_updated = np.arange(0.1, 1.1, 0.1) #10
 
 #6 * 10 = 60 experiments
-#60 experiments * 10 iterations = 600 tests (600 * 20 patters = 12,000)
+#60 experiments * 10 iterations = 600 tests (600 * 20 patterns = 12,000)
 ex_num = 0
-start = time.time()
 for i in noise:
     for j in num_neurons_updated:
         print("EXPERIMENT ", ex_num)
+        start = time.time()
 
         #Create 20 patterns
         patterns = sor.rand_mnist_matrix(20)
